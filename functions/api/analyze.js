@@ -8,74 +8,59 @@ const ALLOWED = [
   "nowgoal831.com"
 ];
 
-const API = "https://api.openligadb.de";
+const OPENLIGA = "https://api.openligadb.de";
+const SPORTSDB = "https://www.thesportsdb.com/api/v1/json/123";
 
-function result(message, url, extra = {}) {
+function result(message, url = "", extra = {}) {
   return Response.json({
     source_status: "unavailable",
     message,
     url,
-    teams: { home: "Ev sahibi", away: "Deplasman" },
-    stats: {},
-    form: [],
-    series: [],
     ...extra
-  }, { headers: { "Cache-Control": "no-store" } });
+  }, {
+    headers: { "Cache-Control": "no-store" }
+  });
 }
 
-function clean(s = "") {
-  return s
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&quot;/g, '"')
+function clean(value) {
+  return String(value || "")
+    .replace(/&amp;/gi, "&")
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&#(\d+);/g, (_, n) =>
+      String.fromCodePoint(Number(n)))
+    .replace(/<[^>]*>/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function extractTeams(title) {
-  const t = clean(title)
-    .replace(/\s*[-|]\s*(Nowgoal.*|Football.*|Live.*)$/i, "")
-    .trim();
-
-  for (const re of [
-    /\s+vs\.?\s+/i,
-    /\s+v\s+/i,
-    /\s+-\s+/
-  ]) {
-    const p = t.split(re);
-    if (p.length === 2 && p.every(x => x.trim().length > 1)) {
-      return p.map(x => x.trim());
-    }
-  }
-  return null;
-}
-
-function norm(s = "") {
-  return s.toLowerCase()
+function norm(value) {
+  return clean(value)
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9 ]/g, "")
-    .replace(/\b(fc|cf|sc|afc|club)\b/g, "")
-    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .replace(/\b(fc|cf|sc|afc|ac|sv|fk|sk|club)\b/g, "")
+    .replace(/[^a-z0-9]+/g, "")
     .trim();
 }
 
-async function getJson(path) {
-  const r = await fetch(API + path, {
+async function getJson(url) {
+  const response = await fetch(url, {
     headers: { "Accept": "application/json" },
     signal: AbortSignal.timeout(10000)
   });
 
-  if (!r.ok) throw new Error("OpenLigaDB HTTP " + r.status);
+  if (!response.ok) {
+    throw new Error("Veri kaynağı HTTP " + response.status);
+  }
 
-  return r.json();
+  return response.json();
 }
 
-function score(m) {
-  const results = Array.isArray(m.matchResults)
-    ? m.matchResults
+function score(match) {
+  const results = Array.isArray(match.matchResults)
+    ? match.matchResults
     : [];
 
   const final = results.find(x =>
@@ -93,21 +78,6 @@ function score(m) {
     ];
   }
 
-  const goals = Array.isArray(m.goals) ? m.goals : [];
-  if (goals.length) {
-    const h = goals.filter(g =>
-      Number(g.scoreTeam1) > Number(g.scoreTeam2)
-    ).length;
-    const a = goals.filter(g =>
-      Number(g.scoreTeam2) > Number(g.scoreTeam1)
-    ).length;
-
-    if (goals.every(g =>
-      Number.isFinite(Number(g.scoreTeam1)) &&
-      Number.isFinite(Number(g.scoreTeam2))
-    )) return [h, a];
-  }
-
   return null;
 }
 
@@ -119,36 +89,159 @@ function finished(rows) {
     );
 }
 
-async function teamMatches(name) {
+function extractTeams(title) {
+  const t = clean(title)
+    .replace(/\s*[-|]\s*(Nowgoal.*|Football.*|Live.*)$/i, "")
+    .trim();
+
+  for (const re of [
+    /\s+vs\.?\s+/i,
+    /\s+v\s+/i,
+    /\s+-\s+/
+  ]) {
+    const parts = t.split(re);
+    if (parts.length === 2 &&
+        parts.every(x => x.trim().length > 1)) {
+      return parts.map(x => x.trim());
+    }
+  }
+
+  return null;
+}
+
+async function openLigaMatches(name) {
   const rows = await getJson(
-    "/getmatchesbyteam/" +
+    OPENLIGA + "/getmatchesbyteam/" +
     encodeURIComponent(name) + "/20/0"
   );
+
   return finished(rows);
 }
 
-function teamStats(rows, teamName) {
-  const n = norm(teamName);
-  const played = rows.map(m => {
-    const h = norm(m.team1?.teamName || "");
-    const a = norm(m.team2?.teamName || "");
-    const s = score(m);
+async function sportsDbMatches(name) {
+  const search = await getJson(
+    SPORTSDB + "/searchteams.php?t=" +
+    encodeURIComponent(name)
+  );
 
-    if (!s || (h !== n && a !== n)) return null;
+  const team = search?.teams?.[0];
+  if (!team?.idTeam) return [];
+
+  const response = await getJson(
+    SPORTSDB + "/eventslast.php?id=" +
+    encodeURIComponent(team.idTeam)
+  );
+
+  const events = Array.isArray(response?.results)
+    ? response.results
+    : Array.isArray(response?.events)
+      ? response.events
+      : [];
+
+  const targetId = String(team.idTeam);
+
+  return events.map(event => {
+    const homeId = String(event.idHomeTeam || "");
+    const awayId = String(event.idAwayTeam || "");
+
+    if (homeId !== targetId && awayId !== targetId) {
+      return null;
+    }
+
+    const homeScore = Number(event.intHomeScore);
+    const awayScore = Number(event.intAwayScore);
+
+    if (!Number.isFinite(homeScore) ||
+        !Number.isFinite(awayScore) ||
+        event.intHomeScore == null ||
+        event.intAwayScore == null) {
+      return null;
+    }
+
+    const homeName = clean(event.strHomeTeam);
+    const awayName = clean(event.strAwayTeam);
 
     return {
-      home: h === n,
-      gf: h === n ? s[0] : s[1],
-      ga: h === n ? s[1] : s[0],
-      opponent: h === n ? m.team2?.teamName : m.team1?.teamName,
-      date: m.matchDateTime,
+      matchIsFinished: true,
+      matchDateTime: event.dateEvent || event.strTimestamp || "",
+      team1: { teamName: homeName },
+      team2: { teamName: awayName },
+      matchResults: [{
+        resultTypeID: 2,
+        resultName: "Final",
+        pointsTeam1: homeScore,
+        pointsTeam2: awayScore
+      }]
+    };
+  }).filter(Boolean).sort((a, b) =>
+    new Date(b.matchDateTime) - new Date(a.matchDateTime)
+  );
+}
+
+async function teamMatches(name) {
+  let primary = [];
+
+  try {
+    primary = await openLigaMatches(name);
+    if (primary.length >= 3) return primary;
+  } catch {
+    // İkinci ücretsiz kaynak denenir.
+  }
+
+  try {
+    const backup = await sportsDbMatches(name);
+    if (backup.length >= 3) return backup;
+  } catch {
+    // Aşağıda veri yetersizliği açıkça bildirilir.
+  }
+
+  if (primary.length > 0) return primary;
+
+  try {
+    return await sportsDbMatches(name);
+  } catch {
+    return [];
+  }
+}
+
+function teamStats(rows, teamName) {
+  const target = norm(teamName);
+
+  const played = rows.map(match => {
+    const homeName = match.team1?.teamName || "";
+    const awayName = match.team2?.teamName || "";
+    const homeNorm = norm(homeName);
+    const awayNorm = norm(awayName);
+    const s = score(match);
+
+    let isHome = homeNorm === target;
+    let isAway = awayNorm === target;
+
+    // Bazı kaynaklar takım adına ek kısaltma ekleyebilir.
+    if (!isHome && !isAway) {
+      isHome = homeNorm.includes(target) ||
+        target.includes(homeNorm);
+      isAway = awayNorm.includes(target) ||
+        target.includes(awayNorm);
+    }
+
+    if (!s || (!isHome && !isAway)) return null;
+
+    return {
+      home: isHome,
+      gf: isHome ? s[0] : s[1],
+      ga: isHome ? s[1] : s[0],
+      opponent: isHome ? awayName : homeName,
+      date: match.matchDateTime,
       score: s
     };
   }).filter(Boolean);
 
-  const mean = (xs, fn) => xs.length
-    ? Math.round(xs.reduce((a, x) => a + fn(x), 0) /
-        xs.length * 100) / 100
+  const mean = (items, fn) => items.length
+    ? Math.round(
+        items.reduce((total, item) => total + fn(item), 0) /
+        items.length * 100
+      ) / 100
     : null;
 
   const home = played.filter(x => x.home);
@@ -168,23 +261,29 @@ function teamStats(rows, teamName) {
   };
 }
 
-function poisson(lambda, k) {
+function poisson(lambda, goals) {
   let p = Math.exp(-lambda);
-  for (let i = 1; i <= k; i++) p *= lambda / i;
+  for (let i = 1; i <= goals; i++) {
+    p *= lambda / i;
+  }
   return p;
 }
 
 function predictions(homeLambda, awayLambda) {
-  const hp = Array.from({length: 7}, (_, i) =>
+  const hp = Array.from({ length: 11 }, (_, i) =>
     poisson(homeLambda, i));
-  const ap = Array.from({length: 7}, (_, i) =>
+  const ap = Array.from({ length: 11 }, (_, i) =>
     poisson(awayLambda, i));
 
-  let over = 0, btts = 0, home = 0, draw = 0, away = 0;
+  let over = 0;
+  let btts = 0;
+  let home = 0;
+  let draw = 0;
+  let away = 0;
   let best = { score: "0-0", p: -1 };
 
-  for (let h = 0; h <= 6; h++) {
-    for (let a = 0; a <= 6; a++) {
+  for (let h = 0; h <= 10; h++) {
+    for (let a = 0; a <= 10; a++) {
       const p = hp[h] * ap[a];
 
       if (h + a >= 3) over += p;
@@ -193,11 +292,13 @@ function predictions(homeLambda, awayLambda) {
       else if (h === a) draw += p;
       else away += p;
 
-      if (p > best.p) best = { score: `${h}-${a}`, p };
+      if (p > best.p) {
+        best = { score: `${h}-${a}`, p };
+      }
     }
   }
 
-  const pct = x => Math.round(x * 100);
+  const pct = value => Math.round(value * 100);
 
   return {
     over25: pct(over),
@@ -215,7 +316,7 @@ export async function onRequestPost({ request }) {
   try {
     body = await request.json();
   } catch {
-    return result("İstek okunamadı.", "");
+    return result("İstek okunamadı.");
   }
 
   const url = String(body?.url || "").trim();
@@ -230,7 +331,8 @@ export async function onRequestPost({ request }) {
   const host = parsed.hostname.toLowerCase();
 
   if (!["https:", "http:"].includes(parsed.protocol) ||
-      !ALLOWED.some(d => host === d || host.endsWith("." + d))) {
+      !ALLOWED.some(d =>
+        host === d || host.endsWith("." + d))) {
     return result("Bu Nowgoal alan adı desteklenmiyor.", url);
   }
 
@@ -247,7 +349,7 @@ export async function onRequestPost({ request }) {
 
     if (!page.ok) {
       return result(
-        "Nowgoal sayfası okunamadı. Site erişimi engelliyor olabilir.",
+        "Nowgoal sayfası okunamadı; site otomatik erişimi engelliyor olabilir.",
         url
       );
     }
@@ -261,7 +363,7 @@ export async function onRequestPost({ request }) {
 
     if (!names) {
       return result(
-        "Takım adları maç bağlantısından alınamadı.",
+        "Takım adları bağlantıdan çıkarılamadı.",
         url
       );
     }
@@ -272,96 +374,89 @@ export async function onRequestPost({ request }) {
     );
   }
 
-  try {
-    const results = await Promise.allSettled([
-      teamMatches(names[0]),
-      teamMatches(names[1])
-    ]);
+  const [homeRows, awayRows] = await Promise.all([
+    teamMatches(names[0]),
+    teamMatches(names[1])
+  ]);
 
-    if (results.some(x => x.status === "rejected")) {
-      return result(
-        "Ücretsiz kaynaklardan veri alınamadı. Daha sonra tekrar dene.",
-        url,
-        { teams: { home: names[0], away: names[1] } }
-      );
-    }
+  const hs = teamStats(homeRows, names[0]);
+  const as = teamStats(awayRows, names[1]);
 
-    const homeRows = results[0].value;
-    const awayRows = results[1].value;
-
-    const hs = teamStats(homeRows, names[0]);
-    const as = teamStats(awayRows, names[1]);
-
-    if (hs.count < 3 || as.count < 3) {
-      return result(
-        "OpenLigaDB bu takımlar için yeterli geçmiş maç bulamadı. Tahmin üretilmedi.",
-        url,
-        {
-          teams: { home: names[0], away: names[1] },
-          stats: {
-            home_sample: hs.count,
-            away_sample: as.count,
-            data_source: "OpenLigaDB"
-          }
-        }
-      );
-    }
-
-    const homeGF = hs.home_gf ?? hs.gf;
-    const homeGA = hs.home_ga ?? hs.ga;
-    const awayGF = as.away_gf ?? as.gf;
-    const awayGA = as.away_ga ?? as.ga;
-
-    const lambdaH = (homeGF + awayGA) / 2;
-    const lambdaA = (awayGF + homeGA) / 2;
-    const pred = predictions(lambdaH, lambdaA);
-
-    const h2h = hs.played.filter(m =>
-      norm(m.opponent) === norm(names[1])
-    );
-
-    return Response.json({
-      source_status: "verified",
-      message: "Ücretsiz OpenLigaDB maç geçmişi kullanıldı. xG, şut ve sakatlık verileri bu kaynakta doğrulanmadı.",
-      url,
-      teams: { home: names[0], away: names[1] },
-      stats: {
-        home_goals_for: homeGF,
-        home_goals_against: homeGA,
-        away_goals_for: awayGF,
-        away_goals_against: awayGA,
-        home_sample: hs.count,
-        away_sample: as.count,
-        total_goal_expectation:
-          Math.round((lambdaH + lambdaA) * 100) / 100,
-        btts_probability: pred.btts,
-        over25_probability: pred.over25,
-        home_win_probability: pred.home_win,
-        draw_probability: pred.draw,
-        away_win_probability: pred.away_win,
-        likely_score: pred.likely_score,
-        three_filter: {
-          home_ga_125: homeGA >= 1.25,
-          away_gf_120: awayGF >= 1.20,
-          total_expected_280:
-            lambdaH + lambdaA >= 2.80
-        },
-        data_source: "OpenLigaDB"
-      },
-      form: [
-        { team: names[0], matches: hs.played.slice(0, 10) },
-        { team: names[1], matches: as.played.slice(0, 10) }
-      ],
-      series: h2h.slice(0, 10)
-    }, {
-      headers: { "Cache-Control": "no-store" }
-    });
-  } catch {
+  if (hs.count < 3 || as.count < 3) {
     return result(
-      "Ücretsiz veri kaynağına bağlanılamadı. Veriler olmadan tahmin yapılmadı.",
+      "Ücretsiz kaynaklarda yeterli geçmiş maç bulunamadı. Tahmin üretilmedi.",
       url,
-      { teams: { home: names[0], away: names[1] } }
+      {
+        teams: { home: names[0], away: names[1] },
+        stats: {
+          home_sample: hs.count,
+          away_sample: as.count,
+          data_sources: ["OpenLigaDB", "TheSportsDB"]
+        }
+      }
     );
   }
+
+  const homeGF = hs.home_gf ?? hs.gf;
+  const homeGA = hs.home_ga ?? hs.ga;
+  const awayGF = as.away_gf ?? as.gf;
+  const awayGA = as.away_ga ?? as.ga;
+
+  if ([homeGF, homeGA, awayGF, awayGA].some(
+    value => value == null || !Number.isFinite(value))) {
+    return result("Takım istatistikleri eksik; tahmin üretilmedi.", url, {
+      teams: { home: names[0], away: names[1] }
+    });
+  }
+
+  const lambdaH = Math.max(0.05, (homeGF + awayGA) / 2);
+  const lambdaA = Math.max(0.05, (awayGF + homeGA) / 2);
+  const pred = predictions(lambdaH, lambdaA);
+
+  const h2h = hs.played.filter(m =>
+    norm(m.opponent) === norm(names[1])
+  );
+
+  const source = [
+    ...homeRows.map(m => "OpenLigaDB"),
+    ...awayRows.map(m => "OpenLigaDB")
+  ];
+
+  return Response.json({
+    source_status: "estimated",
+    message:
+      "Tahminler geçmiş gol ortalamalarından hesaplandı. xG, şut, büyük fırsat ve sakatlık verileri doğrulanmadı. Ücretsiz kaynakların kapsamı sınırlıdır.",
+    url,
+    teams: { home: names[0], away: names[1] },
+    stats: {
+      home_goals_for: homeGF,
+      home_goals_against: homeGA,
+      away_goals_for: awayGF,
+      away_goals_against: awayGA,
+      home_sample: hs.count,
+      away_sample: as.count,
+      total_goal_expectation:
+        Math.round((lambdaH + lambdaA) * 100) / 100,
+      btts_probability: pred.btts,
+      over25_probability: pred.over25,
+      home_win_probability: pred.home_win,
+      draw_probability: pred.draw,
+      away_win_probability: pred.away_win,
+      likely_score: pred.likely_score,
+      three_filter: {
+        home_ga_125: homeGA >= 1.25,
+        away_gf_120: awayGF >= 1.20,
+        total_expected_280: lambdaH + lambdaA >= 2.80
+      },
+      data_sources: ["OpenLigaDB", "TheSportsDB"]
+    },
+    form: [
+      { team: names[0], matches: hs.played.slice(0, 10) },
+      { team: names[1], matches: as.played.slice(0, 10) }
+    ],
+    series: h2h.slice(0, 10)
+  }, {
+    headers: { "Cache-Control": "no-store" }
+  });
 }
 
