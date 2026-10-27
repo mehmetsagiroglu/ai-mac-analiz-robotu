@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#020610"><title>AI Maç Analiz Robotu PRO V3</title>
+<style>
+:root{--bg:#020610;--card:#081221;--line:#162a42;--green:#00e676;--cyan:#00b0ff;--muted:#8b9bb4;--red:#ff1744;--yellow:#ffeb3b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#fff;font:15px system-ui,-apple-system,Segoe UI,sans-serif;padding:14px 14px 76px}
+.app{max-width:1000px;margin:auto;display:grid;gap:14px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;min-width:0}
+.brand{display:flex;align-items:center;gap:12px}.brand-icon{width:42px;height:42px;border-radius:12px;background:#06253a;color:var(--cyan);display:grid;place-items:center;font-size:22px}
+h1{font-size:1.08rem;margin:0}h2{font-size:.95rem;margin:0 0 14px}p{margin:6px 0;color:var(--muted);font-size:.84rem;line-height:1.5}
+.row{display:flex;gap:9px}.input{width:100%;min-width:0;background:#030812;color:#fff;border:1px solid var(--line);border-radius:9px;padding:13px;font-size:.9rem}
+button{cursor:pointer;border:0;border-radius:9px;padding:12px 15px;font-weight:700}.primary{background:var(--cyan);color:#00101a}.secondary{background:#111c2c;color:#dbeafe;border:1px solid var(--line)}button:disabled{opacity:.55;cursor:wait}
+.status{padding:11px 12px;border-radius:9px;background:#061a2a;color:#b9e7ff;font-size:.84rem;line-height:1.5}.status.bad{background:#2a0b17;color:#ffc2ce}.status.good{background:#062518;color:#a7f3d0}
+.headline{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.pill{font-size:.72rem;border:1px solid var(--line);border-radius:99px;padding:5px 9px;color:var(--muted)}
+.teams{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;text-align:center;padding:18px 0}.team{font-weight:800;font-size:1.02rem;overflow-wrap:anywhere}.crest{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:#fff;color:#07111f;font-size:1.25rem;margin:0 auto 8px}.vs{color:var(--green);font-weight:900;font-size:1.2rem}
+.tabs{display:flex;gap:8px;overflow:auto;padding-bottom:2px}.tab{background:#030812;color:var(--muted);border:1px solid var(--line);white-space:nowrap;padding:9px 13px}.tab.active{color:var(--cyan);border-color:var(--cyan);background:#061b2b}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.metric{background:#030812;border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center}.metric small{display:block;color:var(--muted);font-size:.75rem}.metric strong{display:block;font-size:1.45rem;margin:5px 0}.metric .note{font-size:.7rem;color:var(--muted)}
+.gbar{height:6px;border-radius:99px;background:#162a42;overflow:hidden;margin-top:8px}.gbar span{display:block;height:100%;background:var(--green)}
+.filter{display:flex;justify-content:space-between;gap:8px;padding:11px;background:#030812;border:1px solid var(--line);border-radius:9px;margin-top:8px;font-size:.83rem}.pass{color:var(--green);font-weight:800}.fail{color:var(--red);font-weight:800}
+.table{width:100%;border-collapse:collapse;font-size:.82rem}.table td,.table th{text-align:left;padding:10px 6px;border-bottom:1px solid var(--line)}.table th{color:var(--muted);font-weight:600}
+.scorelist{display:flex;gap:8px;overflow:auto}.score{min-width:68px;text-align:center;padding:12px 6px;background:#030812;border:1px solid var(--line);border-radius:9px}.score strong{display:block;font-size:1.05rem}.score small{color:var(--muted)}
+.hidden{display:none!important}.foot{font-size:.74rem;color:var(--muted)}.bottom{position:fixed;bottom:0;left:0;right:0;background:#081221;border-top:1px solid var(--line);display:flex;justify-content:center;padding:10px;z-index:5}.bottom span{font-size:.75rem;color:var(--muted)}
+@media(max-width:650px){body{padding:10px 10px 70px}.grid{grid-template-columns:1fr}.grid3{grid-template-columns:1fr 1fr 1fr}.row{flex-wrap:wrap}.row .input{flex-basis:100%}.row button{flex:1}.card{padding:13px}.metric{padding:10px 5px}.metric strong{font-size:1.25rem}}
+</style></head>
+<body><main class="app">
+<section class="card">
+ <div class="brand"><div class="brand-icon">⚽</div><div><h1>AI Maç Analiz Robotu <span style="color:var(--cyan)">PRO V3</span></h1><p>Nowgoal bağlantısından gerçek veriyi okumayı dener · Telefon ve bilgisayar</p></div></div>
+ <div class="row" style="margin-top:14px"><input id="matchUrl" class="input" placeholder="Nowgoal maç analiz linkini yapıştır (https://...)" autocomplete="url"><button id="analyzeBtn" class="primary">✦ Analiz Et</button><button id="clearBtn" class="secondary">Temizle</button></div>
+ <div id="status" class="status" style="margin-top:10px">Başlamak için bir Nowgoal maç analiz bağlantısı yapıştırın. Sahte/rastgele istatistik üretilmez.</div>
+ <p class="foot">Not: Kaynak site otomatik erişimi engellerse bu, verinin bulunamadığı anlamına gelir; uygulama uydurma tahmin göstermeyecektir.</p>
+</section>
+<section id="dashboard" class="hidden">
+ <section class="card">
+  <div class="headline"><h2 style="margin:0">Maç Özeti</h2><span id="sourceBadge" class="pill">Veri bekleniyor</span></div>
+  <div class="teams"><div class="team"><div class="crest" id="homeCrest">E</div><div id="homeName">Ev sahibi</div></div><div class="vs">VS</div><div class="team"><div class="crest" id="awayCrest">D</div><div id="awayName">Deplasman</div></div></div>
+  <div class="tabs" role="tablist"><button class="tab active" data-tab="overview">Genel Bakış</button><button class="tab" data-tab="stats">İstatistikler</button><button class="tab" data-tab="teams">Takım Analizi & Seriler</button><button class="tab" data-tab="scores">Olası Skorlar</button></div>
+ </section>
+ <section id="panel-overview" class="panel grid">
+  <div class="card"><h2>Maç Tahminleri</h2><div class="grid3">
+   <div class="metric"><small>2,5 Üst</small><strong id="overProb">—</strong><div class="note" id="goalAvg">Ort. gol: —</div></div>
+   <div class="metric"><small>KG Var</small><strong id="bttsProb">—</strong><div class="note">İki takım da gol atar</div></div>
+   <div class="metric"><small>En olası MS</small><strong id="resultProb">—</strong><div class="note" id="resultLabel">Veri gerekli</div></div>
+  </div><p id="pickNote">Gerçek gol istatistikleri olmadan yüzde hesaplanmaz.</p></div>
+  <div class="card"><h2>3'lü Filtre</h2>
+   <div class="filter"><span>Ev sahibi yenilen gol ≥ 1,25</span><strong id="f1">—</strong></div>
+   <div class="filter"><span>Deplasman atılan gol ≥ 1,20</span><strong id="f2">—</strong></div>
+   <div class="filter"><span>Toplam ortalama ≥ 2,80</span><strong id="f3">—</strong></div>
+   <p id="filterSummary">Gerçek ev/deplasman verisi gerekli.</p>
+  </div>
+ </section>
+ <section id="panel-stats" class="panel hidden grid">
+  <div class="card"><h2>Gol Ortalamaları</h2><table class="table"><tbody id="goalTable"><tr><td colspan="3">Gerçek veri bekleniyor.</td></tr></tbody></table></div>
+  <div class="card"><h2>Gelişmiş İstatistikler</h2><table class="table"><tbody id="advancedTable"><tr><td colspan="2">xG, şut ve büyük fırsat verileri kaynakta bulunursa gösterilir.</td></tr></tbody></table></div>
+ </section>
+ <section id="panel-teams" class="panel hidden grid">
+  <div class="card"><h2>Takım Formu</h2><div id="formArea"><p>Son maç sonuçları okunamadı.</p></div></div>
+  <div class="card"><h2>Takım Serileri & İkili Rekabet</h2><div id="seriesArea"><p>Seri/H2H verisi kaynakta bulunursa burada gösterilir.</p></div></div>
+ </section>
+ <section id="panel-scores" class="panel hidden">
+  <div class="card"><h2>Olası Skorlar</h2><div id="scoreList" class="scorelist"><p>Gerçek gol beklentileri olmadan skor olasılığı hesaplanmaz.</p></div><p class="foot">Skor olasılıkları yalnızca elde edilen doğrulanabilir gol ortalamaları üzerinden Poisson modeliyle hesaplanır; kesin sonuç değildir.</p></div>
+ </section>
+</section>
+</main><div class="bottom"><span>PRO V3 · Verisiz yüzde yok · Tahminler garanti değildir</span></div>
+<script>
+const $=id=>document.getElementById(id);
+const apiBase=()=>localStorage.getItem('aimar_api')||'';
+function setStatus(msg,kind=''){ $('status').className='status '+kind; $('status').textContent=msg; }
+function pct(v){return Number.isFinite(v)?Math.round(v*100)+'%':'—'}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.panel').forEach(x=>x.classList.add('hidden'));$('panel-'+b.dataset.tab).classList.remove('hidden')}));
+$('clearBtn').onclick=()=>{$('matchUrl').value='';$('dashboard').classList.add('hidden');setStatus('Yeni bir Nowgoal maç analiz bağlantısı yapıştırabilirsiniz.');};
+$('analyzeBtn').addEventListener('click', analyze);
+$('matchUrl').addEventListener('keydown',e=>{if(e.key==='Enter')analyze()});
+function renderData(d){
+ $('dashboard').classList.remove('hidden');
+ const home=d.teams?.home||'Ev sahibi',away=d.teams?.away||'Deplasman';
+ $('homeName').textContent=home;$('awayName').textContent=away;$('homeCrest').textContent=home[0]||'E';$('awayCrest').textContent=away[0]||'D';
+ $('sourceBadge').textContent=d.source_status==='verified'?'Kaynak verisi alındı':'Kısmi veri';
+ const s=d.stats||{};
+ const evgf=s.home_goals_for, evga=s.home_goals_against, depgf=s.away_goals_for, depga=s.away_goals_against;
+ const enough=[evgf,evga,depgf,depga].every(Number.isFinite);
+ if(enough){
+  const avg=(evgf+evga+depgf+depga)/2;
+  $('goalAvg').textContent='Ort. gol: '+avg.toFixed(2);
+  const l=Math.max(.05,(evgf+depga)/2),m=Math.max(.05,(depgf+evga)/2);
+  const pois=(k,x)=>Math.exp(-x)*Math.pow(x,k)/fact(k);let total=0,ov=0,bt=0,res=[0,0,0],scores=[];
+  for(let h=0;h<=8;h++)for(let a=0;a<=8;a++){let p=pois(h,l)*pois(a,m);total+=p;if(h+a>=3)ov+=p;if(h>0&&a>0)bt+=p;if(h>a)res[0]+=p;else if(h===a)res[1]+=p;else res[2]+=p;scores.push({h,a,p});}
+  $('overProb').textContent=pct(ov/total);$('bttsProb').textContent=pct(bt/total);
+  const idx=res.indexOf(Math.max(...res)),labels=['MS 1','MS X','MS 2'];$('resultProb').textContent=pct(res[idx]/total);$('resultLabel').textContent=labels[idx];
+  $('pickNote').textContent='Model: Poisson · Gol beklentileri: ev '+l.toFixed(2)+' / deplasman '+m.toFixed(2)+'. Bu oranlar tahmindir, garanti değildir.';
+  setFilter('f1',evga>=1.25,evga.toFixed(2));setFilter('f2',depgf>=1.20,depgf.toFixed(2));setFilter('f3',avg>=2.8,avg.toFixed(2));
+  $('filterSummary').textContent=[evga>=1.25,depgf>=1.2,avg>=2.8].filter(Boolean).length+'/3 filtre koşulu sağlandı.';
+  scores.sort((a,b)=>b.p-a.p);$('scoreList').innerHTML=scores.slice(0,8).map((x,i)=>`<div class="score"><strong>${x.h}-${x.a}</strong><small>${pct(x.p/total)}</small></div>`).join('');
+ }else{
+  ['overProb','bttsProb','resultProb'].forEach(id=>$(id).textContent='—');$('goalAvg').textContent='Ort. gol: —';$('resultLabel').textContent='Veri eksik';$('pickNote').textContent='Gerekli gerçek gol ortalamaları bulunamadı; olasılık hesaplanmadı.';
+  ['f1','f2','f3'].forEach(id=>setFilter(id,null,'—'));$('filterSummary').textContent='3’lü filtreyi hesaplamak için gerçek ev/deplasman gol ortalamaları gerekli.';$('scoreList').innerHTML='<p>Veri eksik; skor olasılığı hesaplanmadı.</p>';
+ }
+ const rows=[['Ev sahibi gol attı',evgf],['Ev sahibi gol yedi',evga],['Deplasman gol attı',depgf],['Deplasman gol yedi',depga]];
+ $('goalTable').innerHTML=rows.map(([n,v])=>`<tr><td>${n}</td><td>${Number.isFinite(v)?v.toFixed(2):'—'}</td></tr>`).join('');
+ const adv=[['Ev sahibi xG',s.home_xg],['Deplasman xG',s.away_xg],['Ev sahibi şut',s.home_shots],['Deplasman şut',s.away_shots],['Büyük fırsatlar',s.big_chances]];
+ $('advancedTable').innerHTML=adv.map(([n,v])=>`<tr><td>${n}</td><td>${Number.isFinite(v)?v:'Kaynakta yok'}</td></tr>`).join('');
+ $('formArea').innerHTML=d.form?.length?d.form.map(t=>`<p><b>${esc(t.team)}</b>: ${esc(t.results.join(' · '))}</p>`).join(''):'<p>Son maç formu kaynaktan okunamadı.</p>';
+ $('seriesArea').innerHTML=d.series?.length?d.series.map(x=>`<p>${esc(x)}</p>`).join(''):'<p>Seri/H2H verisi kaynaktan okunamadı.</p>';
+}
+function setFilter(id,pass,val){const e=$(id);e.textContent=val==='—'?'—':(pass?'✓ ':'✕ ')+val;e.className=pass===null?'':pass?'pass':'fail'}
+function fact(n){let x=1;for(let i=2;i<=n;i++)x*=i;return x}
+async function analyze(){
+ const url=$('matchUrl').value.trim();
+ if(location.protocol==='file:'){
+  setStatus('Uygulama dosya önizlemesinde açılmış. Analiz için klasördeki sunucuyu başlatıp http://127.0.0.1:8000 adresinden açmalısınız. iPhone Dosyalar önizlemesi bu uygulamayı çalıştırmaz.','bad');
+  return;
+ }
+ if(!url){setStatus('Lütfen bir Nowgoal maç bağlantısı girin.','bad');$('matchUrl').focus();return}
+ try{const u=new URL(url);if(!['nowgoal.net','www.nowgoal.net','nowgoal.com','www.nowgoal.com','nowgoal26.com','www.nowgoal26.com'].some(h=>u.hostname===h||u.hostname.endsWith('.'+h))){setStatus('Bu bağlantı tanınan Nowgoal alan adlarından değil. Doğru maç analiz bağlantısını kontrol edin.','bad');return}}catch{setStatus('Geçerli bir bağlantı girin (https:// ile başlamalı).','bad');return}
+ const btn=$('analyzeBtn');btn.disabled=true;btn.textContent='Veri okunuyor…';setStatus('Nowgoal bağlantısı sunucu üzerinden kontrol ediliyor.','');
+ try{
+  const resp=await fetch(apiBase()+'/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url}),signal:AbortSignal.timeout(25000)});
+  const d=await resp.json();if(!resp.ok)throw new Error(d.error||'Veri okunamadı.');
+  renderData(d);
+  if(d.source_status==='verified')setStatus('Kaynak verisi alındı. Yalnızca elde edilen alanlar hesaplamada kullanıldı.','good');
+  else setStatus(d.message||'Bağlantı açıldı ancak analiz için yeterli doğrulanabilir istatistik bulunamadı.','bad');
+ }catch(e){setStatus('Veri alınamadı: '+e.message+'. Sunucu çalışıyor mu? README içindeki başlatma adımlarını kontrol edin.','bad');}
+ finally{btn.disabled=false;btn.textContent='✦ Analiz Et'}
+}
+</script></body></html>
