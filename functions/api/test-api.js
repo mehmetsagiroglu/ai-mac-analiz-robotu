@@ -1,21 +1,25 @@
+
 export async function onRequestGet(context) {
   const key = context.env.APIFOOTBALL_KEY;
 
   if (!key) {
-    return Response.json({
-      ok: false,
-      message: "APIFOOTBALL_KEY bulunamadı."
-    }, { status: 500 });
+    return Response.json(
+      {
+        ok: false,
+        message: "APIFOOTBALL_KEY bulunamadi."
+      },
+      { status: 500 }
+    );
   }
 
   try {
     const response = await fetch(
       "https://v3.football.api-sports.io/status",
       {
+        method: "GET",
         headers: {
           "x-apisports-key": key
-        },
-        signal: AbortSignal.timeout(10000)
+        }
       }
     );
 
@@ -26,10 +30,13 @@ export async function onRequestGet(context) {
       api_errors: data.errors || {},
       account: data.response || null
     });
-  } catch {
-    return Response.json({
-      ok: false,
-      message: "API bağlantı isteği başarısız oldu."
-    }, { status: 502 });
+  } catch (error) {
+    return Response.json(
+      {
+        ok: false,
+        message: "API baglanti istegi basarisiz oldu."
+      },
+      { status: 502 }
+    );
   }
-
+}
