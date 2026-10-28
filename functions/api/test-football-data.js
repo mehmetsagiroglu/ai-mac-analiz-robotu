@@ -1,6 +1,26 @@
+
 export async function onRequestGet(context) {
-  return Response.json({
-    environment_available: !!context.env,
-    variable_names: Object.keys(context.env || {})
-  });
+  const key = context.env.FOOTBALL_DATA_KEY;
+
+  try {
+    const response = await fetch(
+      "https://api.football-data.org/v4/competitions",
+      {
+        headers: { "X-Auth-Token": key }
+      }
+    );
+
+    const data = await response.json();
+
+    return Response.json({
+      http_status: response.status,
+      competition_count: data.competitions?.length ?? 0,
+      message: data.message ?? null,
+      competitions: data.competitions?.map(c => c.name) ?? []
+    });
+  } catch {
+    return Response.json({
+      error: "API bağlantısı başarısız."
+    }, { status: 502 });
+  }
 }
